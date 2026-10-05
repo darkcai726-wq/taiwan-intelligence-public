@@ -1,0 +1,28 @@
+name: Publish public intelligence snapshot
+on:
+  push:
+    branches: [main]
+    paths: [publish.mjs, .github/workflows/publish.yml]
+  workflow_dispatch:
+  schedule:
+    # CST 00:40/06:40/12:40/18:40, 30 minutes after nominal collection.
+    - cron: '40 4,10,16,22 * * *'
+permissions:
+  contents: write
+  pages: write
+concurrency:
+  group: public-pages-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: ${{ github.repository == 'darkcai726-wq/taiwan-intelligence-public' && github.event.repository.private == false && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Verify completed collection and publish public files
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node publish.mjs
