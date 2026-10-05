@@ -1,9 +1,15 @@
 name: Verify public static browser
 on:
   workflow_dispatch:
+    inputs:
+      deployment_only:
+        description: Verify the Pages build API once without browser install, collection or model calls
+        type: boolean
+        default: false
 permissions:
   contents: read
   checks: write
+  pages: write
 jobs:
   verify:
     if: ${{ github.repository == 'darkcai726-wq/taiwan-intelligence-public' && github.event.repository.private == false && github.ref == 'refs/heads/main' }}
@@ -11,8 +17,10 @@ jobs:
     timeout-minutes: 8
     steps:
       - name: Install browser driver only for this manual verification
+        if: ${{ !inputs.deployment_only }}
         run: npm install --prefix "$RUNNER_TEMP/public-browser" --no-save --package-lock=false --ignore-scripts --no-audit --no-fund playwright-core@1.56.1
       - name: Verify fresh desktop and mobile sessions on the deployed URL
+        if: ${{ !inputs.deployment_only }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         working-directory: ${{ runner.temp }}/public-browser
@@ -58,4 +66,21 @@ jobs:
           const result={checkedAt:new Date().toISOString(),url:root,revision:manifest.revision,dataUpdatedAt:manifest.dataUpdatedAt,relationshipCount:manifest.analysis?.relationships?.length,evidence};
           const summary='```json\n'+JSON.stringify(result,null,2)+'\n```';appendFileSync(process.env.GITHUB_STEP_SUMMARY,summary+'\n');console.log(JSON.stringify(result));
           const check=await fetch('https://api.github.com/repos/darkcai726-wq/taiwan-intelligence-public/check-runs',{method:'POST',headers:{Authorization:`Bearer ${process.env.GITHUB_TOKEN}`,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify({name:'Public static desktop and mobile',head_sha:process.env.GITHUB_SHA,status:'completed',conclusion:'success',output:{title:'Real Pages desktop/mobile verification passed',summary}})});assert.equal(check.status,201);
+          JS
+      - name: Verify own-token Pages build API without changing the snapshot
+        if: ${{ inputs.deployment_only }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          const base='https://api.github.com/repos/darkcai726-wq/taiwan-intelligence-public';
+          async function api(path,data){const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Authorization:`Bearer ${process.env.GITHUB_TOKEN}`,Accept:'application/vnd.github+json','Content-Type':'application/json'},...(data?{body:JSON.stringify(data)}:{})});assert.ok(r.ok,'Pages verification HTTP '+r.status);return {status:r.status,body:await r.json()};}
+          const head=(await api('/git/ref/heads/gh-pages')).body.object.sha;
+          const requested=await api('/pages/builds',{});assert.equal(requested.status,201);
+          let built=false;
+          for(let i=0;i<30;i++){const build=(await api('/pages/builds/latest')).body;if(build.commit===head&&build.status==='built'){built=true;break;}assert.ok(build.commit!==head||build.status!=='errored');await new Promise(resolve=>setTimeout(resolve,10000));}
+          assert.ok(built,'Pages build did not finish');assert.equal((await api('/git/ref/heads/gh-pages')).body.object.sha,head);
+          const result={checkedAt:new Date().toISOString(),requestStatus:requested.status,buildStatus:'built',commit:head,archiveChanged:false,collectionCalls:0,modelCalls:0};
+          const check=await api('/check-runs',{name:'Own-token Pages build API',head_sha:process.env.GITHUB_SHA,status:'completed',conclusion:'success',output:{title:'Own GITHUB_TOKEN requested and completed a Pages build',summary:JSON.stringify(result,null,2)}});assert.equal(check.status,201);console.log(JSON.stringify(result));
           JS
