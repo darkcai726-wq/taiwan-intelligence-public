@@ -78,8 +78,9 @@ jobs:
           async function api(path,data){const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Authorization:`Bearer ${process.env.GITHUB_TOKEN}`,Accept:'application/vnd.github+json','Content-Type':'application/json'},...(data?{body:JSON.stringify(data)}:{})});assert.ok(r.ok,'Pages verification HTTP '+r.status);return {status:r.status,body:await r.json()};}
           const head=(await api('/git/ref/heads/gh-pages')).body.object.sha;
           const requested=await api('/pages/builds',{});assert.equal(requested.status,201);
+          const buildPath=requested.body.url?.startsWith(base+'/pages/builds/')?requested.body.url.slice(base.length):'';assert.match(buildPath,/^\/pages\/builds\/\d+$/);
           let built=false;
-          for(let i=0;i<30;i++){const build=(await api('/pages/builds/latest')).body;if(build.commit===head&&build.status==='built'){built=true;break;}assert.ok(build.commit!==head||build.status!=='errored');await new Promise(resolve=>setTimeout(resolve,10000));}
+          for(let i=0;i<30;i++){const build=(await api(buildPath)).body;if(build.commit===head&&build.status==='built'){built=true;break;}assert.ok(build.commit!==head||build.status!=='errored');await new Promise(resolve=>setTimeout(resolve,10000));}
           assert.ok(built,'Pages build did not finish');assert.equal((await api('/git/ref/heads/gh-pages')).body.object.sha,head);
           const result={checkedAt:new Date().toISOString(),requestStatus:requested.status,buildStatus:'built',commit:head,archiveChanged:false,collectionCalls:0,modelCalls:0};
           const check=await api('/check-runs',{name:'Own-token Pages build API',head_sha:process.env.GITHUB_SHA,status:'completed',conclusion:'success',output:{title:'Own GITHUB_TOKEN requested and completed a Pages build',summary:JSON.stringify(result,null,2)}});assert.equal(check.status,201);console.log(JSON.stringify(result));
