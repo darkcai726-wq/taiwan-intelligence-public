@@ -129,9 +129,13 @@ export async function publish({repo=process.env.GITHUB_REPOSITORY,token=process.
   // A GITHUB_TOKEN push does not automatically start a branch Pages build.
   // Explicitly request it using this repo's short-lived pages:write token.
   // Retry an earlier failed build even when content did not change.
-  if(latest?.commit!==target||!['queued','building'].includes(latest.status))await api('/pages/builds',{});
+  const requestedNewBuild=latest?.commit!==target||!['queued','building'].includes(latest.status);
+  if(requestedNewBuild)await api('/pages/builds',{});
   for(let attempt=0;attempt<buildAttempts;attempt++){
     const build=await api('/pages/builds/latest');
+    // A newly requested build can briefly leave latest pointing at the prior
+    // failed build. Wait for a new build identity before accepting its status.
+    if(requestedNewBuild&&latest?.url&&build.url===latest.url){if(attempt+1<buildAttempts)await sleep(15000);continue;}
     if(build.commit===target&&build.status==='built'){
       log(`Pages built ${target}: ${source.articles.length} articles; model calls 0.`);
       return {state:unchanged?'rebuilt':'published',revision:source.revision,commit:target,url:pages.html_url};
